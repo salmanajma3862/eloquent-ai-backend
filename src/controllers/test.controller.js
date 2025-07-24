@@ -1,4 +1,5 @@
 import Session from '../models/sessionModel.js';
+import { createClient } from '@deepgram/sdk';
 
 // IELTS Part 2 Speaking Topics Bank
 const ieltsTopics = [
@@ -95,4 +96,36 @@ const createTestSession = async (req, res) => {
     }
 };
 
-export { getTestTopic, createTestSession };
+// @desc    Transcribe prerecorded audio file
+// @route   POST /api/test/transcribe
+// @access  Private
+const transcribePrerecorded = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No audio file uploaded.' });
+    }
+
+    const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+
+    // Correct path for Deepgram SDK v4 with file buffer
+    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+      req.file.buffer,
+      {
+        model: 'nova-2',
+        smart_format: true,
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ transcription: result });
+
+  } catch (error) {
+    console.error("Error in transcribePrerecorded:", error);
+    res.status(500).json({ message: 'Error processing audio' });
+  }
+};
+
+export { getTestTopic, createTestSession, transcribePrerecorded };

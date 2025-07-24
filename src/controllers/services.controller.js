@@ -12,25 +12,49 @@ const s3Client = new S3Client({
     },
 });
 
-// @desc    Get Deepgram API token
+// @desc    Generate temporary Deepgram API key
 // @route   GET /api/test/deepgram-token
 // @access  Private
-const getDeepgramToken = async (req, res) => {
-    try {
-        // Check if Deepgram API key is configured
-        if (!process.env.DEEPGRAM_API_KEY) {
-            return res.status(500).json({ 
-                message: 'Deepgram API key not configured' 
-            });
-        }
-
-        res.json({
-            deepgramToken: process.env.DEEPGRAM_API_KEY
-        });
-    } catch (error) {
-        console.error('Get Deepgram token error:', error);
-        res.status(500).json({ message: 'Error retrieving Deepgram token' });
+export const getDeepgramToken = async (req, res) => {
+  try {
+    if (!process.env.DEEPGRAM_API_KEY || !process.env.DEEPGRAM_PROJECT_ID) {
+      console.error("Deepgram API Key or Project ID is not configured.");
+      return res.status(500).json({ message: 'Server configuration error.' });
     }
+
+    const DG_API_KEY = process.env.DEEPGRAM_API_KEY;
+    const DG_PROJECT_ID = process.env.DEEPGRAM_PROJECT_ID;
+
+    // The URL for Deepgram's REST API to create a key for a project
+    const url = `https://api.deepgram.com/v1/projects/${DG_PROJECT_ID}/keys`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${DG_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        comment: 'Temporary key for frontend',
+        scopes: ['member'],
+        timeToLive: 60 // in seconds
+      })
+    });
+
+    const newKeyData = await response.json();
+
+    if (!response.ok) {
+      console.error("Deepgram API returned an error:", newKeyData);
+      throw new Error(newKeyData.reason || 'Failed to create Deepgram key');
+    }
+
+    // Send the temporary key to the frontend
+    res.json({ deepgramToken: newKeyData.key });
+
+  } catch (error) {
+    console.error("Fatal error in getDeepgramToken (manual fetch):", error);
+    res.status(500).json({ message: 'Fatal error generating Deepgram token' });
+  }
 };
 
 // @desc    Generate presigned URL for Cloudflare R2 upload
@@ -96,4 +120,4 @@ const getPresignedR2Url = async (req, res) => {
     }
 };
 
-export { getDeepgramToken, getPresignedR2Url };
+export { getPresignedR2Url };
