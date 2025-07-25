@@ -173,6 +173,7 @@ const transcribePrerecorded = async (req, res) => {
     // --- NEW INCREMENT LOGIC ---
     // Increment the user's total session count
     user.totalSessions += 1;
+    user.lastSessionDate = new Date();
     await user.save();
     // -------------------------
 

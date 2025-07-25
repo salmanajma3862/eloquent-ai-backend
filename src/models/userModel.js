@@ -50,6 +50,9 @@ const userSchema = new mongoose.Schema({
     lastLogin: {
         type: Date
     },
+    lastSessionDate: {
+        type: Date
+    },
     emailVerified: {
         type: Boolean,
         default: false
