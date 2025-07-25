@@ -1,4 +1,5 @@
 import Session from '../models/sessionModel.js';
+import User from '../models/userModel.js';
 import { createClient } from '@deepgram/sdk';
 
 // IELTS Part 2 Speaking Topics Bank
@@ -96,18 +97,27 @@ const createTestSession = async (req, res) => {
     }
 };
 
-// @desc    Transcribe prerecorded audio file
+// @desc    Transcribe prerecorded audio file and create session (CEO's new strategy)
 // @route   POST /api/test/transcribe
 // @access  Private
 const transcribePrerecorded = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No audio file uploaded.' });
+    const { topicText, durationInSeconds } = req.body;
+    if (!req.file || !topicText || !durationInSeconds) {
+      return res.status(400).json({ message: 'Missing required fields.' });
     }
 
-    const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+    // --- NEW GATING LOGIC (CEO's STRATEGY) ---
+    const user = await User.findById(req.user._id);
+    if (user.subscription.plan === 'free' && user.totalSessions >= 3) {
+      return res.status(403).json({
+          message: "You've completed your 3 free tests. Please upgrade for unlimited practice."
+      });
+    }
+    // ----------------------------------------
 
-    // Correct path for Deepgram SDK v4 with file buffer
+    // Transcribe the audio (existing logic is fine)
+    const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
       req.file.buffer,
       {
@@ -115,12 +125,27 @@ const transcribePrerecorded = async (req, res) => {
         smart_format: true,
       }
     );
+    if (error) throw error;
+    const transcript = result.results.channels[0].alternatives[0].transcript;
 
-    if (error) {
-      throw error;
-    }
+    // Create the new session (moved from frontend)
+    const newSession = new Session({
+      user: req.user._id,
+      topicText,
+      durationInSeconds,
+      transcribedText: transcript,
+      audioUrl: 'placeholder/for/now.webm' // Still a placeholder
+    });
+    await newSession.save();
 
-    res.json({ transcription: result });
+    // --- NEW INCREMENT LOGIC ---
+    // Increment the user's total session count
+    user.totalSessions += 1;
+    await user.save();
+    // -------------------------
+
+    // Return the ID of the new session so the frontend can redirect
+    res.status(201).json({ sessionId: newSession._id });
 
   } catch (error) {
     console.error("Error in transcribePrerecorded:", error);

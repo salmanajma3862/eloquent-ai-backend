@@ -36,13 +36,9 @@ const userSchema = new mongoose.Schema({
         type: subscriptionSchema,
         default: () => ({ plan: 'free' })
     },
-    freeTestsRemaining: {
+    totalSessions: {
         type: Number,
-        default: 3
-    },
-    lastTestResetDate: { // To manage the "3 free tests *per week*" logic
-        type: Date,
-        default: Date.now
+        default: 0
     },
 
     // --- Security & Metadata ---

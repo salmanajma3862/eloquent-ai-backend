@@ -28,7 +28,7 @@ router.get('/deepgram-token', getDeepgramToken);
 router.get('/r2-upload-url', getPresignedR2Url);
 
 // @route   POST /api/test/transcribe
-// @desc    Transcribe uploaded audio file using Deepgram prerecorded API
+// @desc    Transcribe uploaded audio file and create session (CEO's new strategy)
 // @access  Private
 router.post(
   '/transcribe',
