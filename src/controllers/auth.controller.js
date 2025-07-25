@@ -132,4 +132,25 @@ const googleLogin = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, googleLogin };
+// @desc    Get current user profile
+// @route   GET /api/auth/me
+// @access  Private
+const getMe = async (req, res) => {
+    try {
+        // User is already attached to req.user by authMiddleware
+        const user = req.user;
+
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            subscription: user.subscription,
+            totalSessions: user.totalSessions,
+        });
+    } catch (error) {
+        console.error('Get user profile error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+export { registerUser, loginUser, googleLogin, getMe };
