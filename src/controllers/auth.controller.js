@@ -34,6 +34,8 @@ const registerUser = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                subscription: user.subscription,
+                totalSessions: user.totalSessions,
                 token: generateToken(user._id),
             });
         } else {
@@ -63,6 +65,8 @@ const loginUser = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                subscription: user.subscription,
+                totalSessions: user.totalSessions,
                 token: generateToken(user._id),
             });
         } else {
@@ -101,6 +105,8 @@ const googleLogin = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                subscription: user.subscription,
+                totalSessions: user.totalSessions,
                 token: generateToken(user._id),
             });
         } else {
@@ -116,6 +122,8 @@ const googleLogin = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                subscription: user.subscription,
+                totalSessions: user.totalSessions,
                 token: generateToken(user._id),
             });
         }

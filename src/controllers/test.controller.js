@@ -1,6 +1,18 @@
 import Session from '../models/sessionModel.js';
 import User from '../models/userModel.js';
 import { createClient } from '@deepgram/sdk';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import crypto from 'crypto';
+
+// Initialize S3 client for Cloudflare R2
+const s3Client = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+});
 
 // IELTS Part 2 Speaking Topics Bank
 const ieltsTopics = [
@@ -116,6 +128,25 @@ const transcribePrerecorded = async (req, res) => {
     }
     // ----------------------------------------
 
+    // --- NEW: R2 UPLOAD LOGIC ---
+    // 1. Generate a unique key for the file
+    const fileKey = `audio-recordings/${crypto.randomUUID()}.webm`;
+
+    // 2. Create the command to upload the file buffer
+    const uploadCommand = new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: fileKey,
+      Body: req.file.buffer, // The audio file from multer
+      ContentType: req.file.mimetype,
+    });
+
+    // 3. Execute the upload
+    await s3Client.send(uploadCommand);
+
+    // 4. Construct the public URL
+    const audioUrl = `${process.env.R2_PUBLIC_URL}/${fileKey}`;
+    // ----------------------------
+
     // Transcribe the audio (existing logic is fine)
     const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
@@ -128,13 +159,14 @@ const transcribePrerecorded = async (req, res) => {
     if (error) throw error;
     const transcript = result.results.channels[0].alternatives[0].transcript;
 
-    // Create the new session (moved from frontend)
+    // --- MODIFIED: Session Saving Logic ---
+    // Create the new session with the REAL audioUrl
     const newSession = new Session({
       user: req.user._id,
       topicText,
       durationInSeconds,
       transcribedText: transcript,
-      audioUrl: 'placeholder/for/now.webm' // Still a placeholder
+      audioUrl: audioUrl, // Use the real URL, not the placeholder
     });
     await newSession.save();
 

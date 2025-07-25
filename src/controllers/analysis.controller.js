@@ -27,7 +27,7 @@ export const getAnalysis = async (req, res) => {
 
         // Check for existing analysis to save time and API costs
         if (session.analysis) {
-            return res.json(session.analysis);
+            return res.json(session);
         }
 
         // Check if we have transcribed text to analyze
@@ -100,8 +100,8 @@ The JSON object must have the following structure:
         session.status = 'completed';
         await session.save();
 
-        // Return the analysis
-        res.json(analysisData);
+        // Return the full session object
+        res.json(session);
 
     } catch (error) {
         console.error('Analysis error:', error);
