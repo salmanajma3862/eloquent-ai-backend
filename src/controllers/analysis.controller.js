@@ -2,8 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import Session from '../models/sessionModel.js';
 
 // Initialize Anthropic client
-const anthropic = new Anthropic({ 
-    apiKey: process.env.ANTHROPIC_API_KEY 
+const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY
 });
 
 // @desc    Get AI analysis for a session

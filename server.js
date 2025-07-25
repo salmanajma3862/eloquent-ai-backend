@@ -5,7 +5,8 @@ import connectDB from './src/config/db.js';
 import authRoutes from './src/routes/auth.routes.js';
 import testRoutes from './src/routes/test.routes.js';
 import analysisRoutes from './src/routes/analysis.routes.js';
-import sessionRoutes from './src/routes/session.routes.js';          
+import sessionRoutes from './src/routes/session.routes.js';
+import ttsRoutes from './src/routes/tts.routes.js';
 
 // Connect to database
 connectDB();
@@ -22,6 +23,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/tts', ttsRoutes);
 
 // Basic health check route
 app.get('/', (req, res) => {

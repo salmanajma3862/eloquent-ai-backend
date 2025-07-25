@@ -50,7 +50,12 @@ const sessionSchema = new mongoose.Schema({
     analysis: {
         type: analysisSchema
     },
-    
+
+    // --- AI-Generated Audio ---
+    suggestedAudioUrl: {
+        type: String
+    },
+
     // --- Processing Metadata ---
     status: {
         type: String,
