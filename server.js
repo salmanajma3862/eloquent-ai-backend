@@ -18,7 +18,7 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost:5173', 
-    'http://192.168.100.35:5173' // <-- ADD THIS LINE (use your IP)
+    'http://192.168.69.2:5173' // <-- ADD THIS LINE (use your IP)
   ]
 }));
 app.use(express.json());
