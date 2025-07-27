@@ -12,6 +12,24 @@ const registerUser = async (req, res) => {
     try {
         const { name, email, password } = req.body;
 
+        // --- NEW IP-BASED ABUSE PREVENTION ---
+
+        // 1. Get the user's IP address from the request.
+        // 'req.ip' is a common way, but relying on headers is more robust behind proxies.
+        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+        // 2. Check how many accounts already exist with this IP.
+        const existingAccountsFromIp = await User.countDocuments({ signupIpAddress: ipAddress });
+
+        const IP_LIMIT = 2; // Allow a max of 2 free accounts per IP.
+
+        if (existingAccountsFromIp >= IP_LIMIT) {
+            return res.status(403).json({
+                message: "Account creation limit for this network has been reached."
+            });
+        }
+        // ------------------------------------
+
         // Check if user already exists
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -27,6 +45,7 @@ const registerUser = async (req, res) => {
             name,
             email,
             password: hashedPassword,
+            signupIpAddress: ipAddress, // Store the IP address
         });
 
         if (user) {
@@ -110,12 +129,25 @@ const googleLogin = async (req, res) => {
                 token: generateToken(user._id),
             });
         } else {
+            // --- IP-BASED ABUSE PREVENTION FOR GOOGLE SIGN-UP ---
+            const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+            const existingAccountsFromIp = await User.countDocuments({ signupIpAddress: ipAddress });
+            const IP_LIMIT = 2;
+
+            if (existingAccountsFromIp >= IP_LIMIT) {
+                return res.status(403).json({
+                    message: "Account creation limit for this network has been reached."
+                });
+            }
+            // -------------------------------------------------------
+
             // User doesn't exist, create new user
             user = await User.create({
                 name,
                 email,
                 googleId,
                 emailVerified: true, // Google accounts are pre-verified
+                signupIpAddress: ipAddress, // Store the IP address
             });
 
             res.status(201).json({

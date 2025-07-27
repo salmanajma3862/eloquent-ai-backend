@@ -56,6 +56,9 @@ const userSchema = new mongoose.Schema({
     emailVerified: {
         type: Boolean,
         default: false
+    },
+    signupIpAddress: {
+        type: String,
     }
 }, {
     timestamps: true // Automatically adds createdAt and updatedAt

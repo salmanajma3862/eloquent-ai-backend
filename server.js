@@ -14,10 +14,13 @@ connectDB();
 // Initialize Express app
 const app = express();
 
+// Enable trust proxy to get the real IP address from behind proxies
+app.set('trust proxy', 1); // The '1' means we trust the first proxy in the chain.
+
 // Middleware
 app.use(cors({
   origin: [
-    'http://localhost:5173', 
+    'http://localhost:5173',
     'http://192.168.69.2:5173' // <-- ADD THIS LINE (use your IP)
   ]
 }));
