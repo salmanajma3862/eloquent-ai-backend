@@ -7,9 +7,9 @@ export const getUserSessions = async (req, res) => {
     try {
         // Find all sessions for the authenticated user
         // Sort by createdAt in descending order (most recent first)
-        // Select only the fields needed for the dashboard list view
+        // Select fields needed for dashboard and progress tracking
         const sessions = await Session.find({ user: req.user._id })
-            .select('_id topicText createdAt analysis.overallBandScore status audioUrl suggestedAudioUrl')
+            .select('_id topicText createdAt analysis status audioUrl suggestedAudioUrl')
             .sort({ createdAt: -1 });
 
         res.status(200).json(sessions);
