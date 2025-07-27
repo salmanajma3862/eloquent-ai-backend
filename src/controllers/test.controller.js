@@ -121,6 +121,19 @@ const transcribePrerecorded = async (req, res) => {
 
     // --- NEW GATING LOGIC (CEO's STRATEGY) ---
     const user = await User.findById(req.user._id);
+
+    const duration = parseInt(req.body.durationInSeconds, 10);
+    const userPlan = user.subscription.plan;
+
+    // --- NEW TIERED DURATION VALIDATION ---
+    const MAX_FREE_DURATION = 65; // 60 seconds + 5s grace period
+    if (userPlan === 'free' && duration > MAX_FREE_DURATION) {
+        return res.status(403).json({
+            message: 'Free users are limited to 1-minute recordings. Please upgrade for the full 2-minute experience.'
+        });
+    }
+    // ------------------------------------
+
     if (user.subscription.plan === 'free' && user.totalSessions >= 3) {
       return res.status(403).json({
           message: "You've completed your 3 free tests. Please upgrade for unlimited practice."
