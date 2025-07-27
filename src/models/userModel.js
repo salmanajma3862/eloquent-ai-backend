@@ -1,10 +1,10 @@
 import mongoose from 'mongoose';
 
 const subscriptionSchema = new mongoose.Schema({
-    plan: { type: String, enum: ['free', 'premium'] },
+    plan: { type: String, enum: ['free', 'monthly', 'accelerator'], default: 'free' },
     stripeCustomerId: { type: String, unique: true, sparse: true }, //sparse allows nulls to not be unique
     status: { type: String, enum: ['active', 'canceled', 'incomplete'], default: 'incomplete' },
-    currentPeriodEnd: { type: Date }
+    validUntil: { type: Date }
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({
@@ -36,7 +36,15 @@ const userSchema = new mongoose.Schema({
         type: subscriptionSchema,
         default: () => ({ plan: 'free' })
     },
-    totalSessions: {
+    sessionsTaken: {
+        type: Number,
+        default: 0
+    },
+    sessionsRemaining: {
+        type: Number,
+        default: 3 // Free users start with 3 credits
+    },
+    totalSessions: { // For lifetime analytics
         type: Number,
         default: 0
     },

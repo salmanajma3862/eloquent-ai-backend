@@ -119,8 +119,27 @@ const transcribePrerecorded = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields.' });
     }
 
-    // --- NEW GATING LOGIC (CEO's STRATEGY) ---
     const user = await User.findById(req.user._id);
+    const now = new Date();
+
+    // --- NEW "CREDIT SYSTEM" GATING LOGIC ---
+
+    // 1. Handle expired subscriptions first
+    if (user.subscription.plan !== 'free' && user.subscription.validUntil < now) {
+        user.subscription.plan = 'free';
+        user.sessionsRemaining = 3; // Give them 3 new free credits
+        user.sessionsTaken = 0; // Reset their paid session count
+        await user.save();
+        return res.status(403).json({ message: "Your premium plan has expired." });
+    }
+
+    // 2. Check if the user has any sessions remaining.
+    if (user.sessionsRemaining <= 0) {
+        // This now correctly blocks both free users and premium users who have hit their limit.
+        return res.status(403).json({ message: "You have no sessions remaining. Please upgrade or wait for your plan to renew." });
+    }
+
+    // --- END GATING LOGIC ---
 
     const duration = parseInt(req.body.durationInSeconds, 10);
     const userPlan = user.subscription.plan;
@@ -133,13 +152,6 @@ const transcribePrerecorded = async (req, res) => {
         });
     }
     // ------------------------------------
-
-    if (user.subscription.plan === 'free' && user.totalSessions >= 3) {
-      return res.status(403).json({
-          message: "You've completed your 3 free tests. Please upgrade for unlimited practice."
-      });
-    }
-    // ----------------------------------------
 
     // --- NEW: R2 UPLOAD LOGIC ---
     // 1. Generate a unique key for the file
@@ -183,12 +195,17 @@ const transcribePrerecorded = async (req, res) => {
     });
     await newSession.save();
 
-    // --- NEW INCREMENT LOGIC ---
-    // Increment the user's total session count
+    // --- NEW "CREDIT SYSTEM" UPDATE LOGIC ---
+    // Decrement remaining sessions
+    user.sessionsRemaining -= 1;
+    // Increment taken sessions for the current period
+    user.sessionsTaken += 1;
+    // Increment lifetime total sessions for analytics
     user.totalSessions += 1;
     user.lastSessionDate = new Date();
+
     await user.save();
-    // -------------------------
+    // ------------------------------------
 
     // Return the ID of the new session so the frontend can redirect
     res.status(201).json({ sessionId: newSession._id });
