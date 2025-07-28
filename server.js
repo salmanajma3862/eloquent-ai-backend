@@ -21,7 +21,8 @@ app.set('trust proxy', 1); // The '1' means we trust the first proxy in the chai
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'http://192.168.69.2:5173' // <-- ADD THIS LINE (use your IP)
+    'http://192.168.69.2:5173',
+    process.env.FRONTEND_URL // <-- ADD THIS LINE (use your IP)
   ]
 }));
 app.use(express.json());
