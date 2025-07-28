@@ -35,8 +35,8 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/tts', ttsRoutes);
 
 // Basic health check route
-app.get('/', (req, res) => {
-    res.json({ message: 'Eloquent AI Backend API is running!' });
+app.get('/health', (req, res) => {
+    res.json({ message: 'Ok!' });
 });
 
 // Define PORT
