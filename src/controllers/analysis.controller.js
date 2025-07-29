@@ -118,7 +118,7 @@ The JSON object must have the following structure:
         } else if (error.status >= 400 && error.status < 500) {
             return res.status(500).json({ 
                 message: 'AI service request failed. Please try again.' 
-            });
+            }); 
         }
 
         res.status(500).json({ 
