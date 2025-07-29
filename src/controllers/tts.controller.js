@@ -18,34 +18,57 @@ const s3Client = new S3Client({
 export const generateAndStreamAudio = async (req, res) => {
     try {
         const { sessionId } = req.params;
+        let debugLog = [];
+        debugLog.push({ step: 'start', sessionId });
         const session = await Session.findById(sessionId);
+        debugLog.push({ step: 'session_fetched', session });
 
         // 1. Check if the audio URL already exists. If so, redirect to R2 URL
         if (session?.suggestedAudioUrl) {
-            console.log(`Audio already exists for session ${sessionId}, redirecting to R2`);
+            debugLog.push({ step: 'audio_exists', url: session.suggestedAudioUrl });
             return res.redirect(session.suggestedAudioUrl);
         }
 
         if (!session || !session.analysis?.improvedText) {
-            return res.status(404).json({ message: 'Analysis text not found.' });
+            debugLog.push({ step: 'analysis_missing', session });
+            return res.status(404).json({ message: 'Analysis text not found.', debugLog });
         }
 
         const suggestedText = session.analysis.improvedText;
+        debugLog.push({ step: 'got_suggested_text', suggestedText });
 
         // 2. Generate the audio stream from ElevenLabs
-        const audioStream = await elevenlabs.textToSpeech.convert("21m00Tcm4TlvDq8ikWAM", {
-            text: suggestedText,
-            model_id: "eleven_multilingual_v2"
-        });
+        let audioStream;
+        try {
+            audioStream = await elevenlabs.textToSpeech.convert("21m00Tcm4TlvDq8ikWAM", {
+                text: suggestedText,
+                model_id: "eleven_multilingual_v2"
+            });
+            debugLog.push({ step: 'audio_stream_created' });
+        } catch (err) {
+            debugLog.push({ step: 'elevenlabs_error', error: err?.message || err });
+            return res.status(500).json({ message: 'Failed to generate audio from ElevenLabs.', debugLog });
+        }
 
         // 3. Convert the stream into a buffer for both streaming and uploading
-        // --- NEW, ROBUST BUFFER CONSTRUCTION LOGIC ---
         const chunks = [];
-        for await (const chunk of audioStream) {
-            chunks.push(chunk);
+        try {
+            for await (const chunk of audioStream) {
+                chunks.push(chunk);
+            }
+            debugLog.push({ step: 'audio_stream_buffered', chunkCount: chunks.length });
+        } catch (err) {
+            debugLog.push({ step: 'buffering_error', error: err?.message || err });
+            return res.status(500).json({ message: 'Failed to buffer audio stream.', debugLog });
         }
-        const audioBuffer = Buffer.concat(chunks);
-        // ------------------------------------------
+        let audioBuffer;
+        try {
+            audioBuffer = Buffer.concat(chunks);
+            debugLog.push({ step: 'audio_buffer_created', bufferLength: audioBuffer.length });
+        } catch (err) {
+            debugLog.push({ step: 'buffer_concat_error', error: err?.message || err });
+            return res.status(500).json({ message: 'Failed to create audio buffer.', debugLog });
+        }
 
         // 4. --- UPLOAD TO R2 (in the background) ---
         const audioKey = `suggested-audio/${crypto.randomUUID()}.mp3`;
@@ -56,24 +79,22 @@ export const generateAndStreamAudio = async (req, res) => {
             ContentType: 'audio/mpeg',
         });
 
-        // We start the upload but don't wait for it to finish before streaming to the user.
-        // We will update the database after the upload is done.
         s3Client.send(uploadCommand).then(async () => {
             const suggestedAudioUrl = `${process.env.R2_PUBLIC_URL}/${audioKey}`;
             session.suggestedAudioUrl = suggestedAudioUrl;
             await session.save();
-            console.log(`Successfully saved suggested audio for session ${sessionId}`);
+            debugLog.push({ step: 'audio_uploaded', suggestedAudioUrl });
         }).catch(err => {
-            console.error(`Failed to upload suggested audio for session ${sessionId}:`, err);
+            debugLog.push({ step: 'r2_upload_error', error: err?.message || err });
         });
-        // ------------------------------------------
 
         // 5. --- STREAM TO USER (immediately) ---
         res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("X-Debug-Log", encodeURIComponent(JSON.stringify(debugLog)));
         res.send(audioBuffer); // Send the complete buffer at once.
 
     } catch (error) {
-        console.error("On-demand TTS Error:", error);
-        res.status(500).json({ message: "Failed to generate audio." });
+        const debugLog = [{ step: 'catch_error', error: error?.message || error }];
+        res.status(500).json({ message: "Failed to generate audio.", debugLog });
     }
 };
