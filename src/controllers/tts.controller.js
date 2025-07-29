@@ -42,8 +42,8 @@ export const generateAndStreamAudio = async (req, res) => {
         try {
             debugLog.push({ step: 'calling_unreal_speech_api' });
 
-            const response = await axios.post("https://api.unrealspeech.com/stream", {
-                method: 'POST',
+            const response = await axios.post("https://api.unrealspeech.com/stream/", {
+                method: 'POST', 
                 headers: {
                     'Authorization': `Bearer ${UNREAL_API_KEY}`,
                     'Content-Type': 'application/json'
