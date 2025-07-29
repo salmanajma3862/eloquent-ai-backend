@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 import Session from '../models/sessionModel.js';
+import axios from 'axios';
 
 // Initialize S3 client for Cloudflare R2
 const s3Client = new S3Client({
@@ -41,12 +42,13 @@ export const generateAndStreamAudio = async (req, res) => {
         try {
             debugLog.push({ step: 'calling_unreal_speech_api' });
 
-            const response = await fetch("https://api.unrealspeech.com/stream", {
+            const response = await axios.post("https://api.unrealspeech.com/stream", {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${UNREAL_API_KEY}`,
                     'Content-Type': 'application/json'
                 },
+                responseType: 'arraybuffer',
                 body: JSON.stringify({
                     Text: suggestedText,
                     VoiceId: "Dan", // A standard, clear male voice
