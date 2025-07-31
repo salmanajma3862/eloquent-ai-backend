@@ -123,6 +123,6 @@ The JSON object must have the following structure:
 
         res.status(500).json({ 
             message: 'Failed to generate analysis. Please try again later.' 
-        });
+        }); 
     }
 };
