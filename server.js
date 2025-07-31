@@ -7,6 +7,7 @@ import testRoutes from './src/routes/test.routes.js';
 import analysisRoutes from './src/routes/analysis.routes.js';
 import sessionRoutes from './src/routes/session.routes.js';
 import ttsRoutes from './src/routes/tts.routes.js';
+import helmet from 'helmet';  
 
 // Connect to database
 connectDB();
@@ -15,14 +16,16 @@ connectDB();
 const app = express();
 
 // Enable trust proxy to get the real IP address from behind proxies
-app.set('trust proxy', 1); // The '1' means we trust the first proxy in the chain.
+app.set('trust proxy', 1);
+app.use(helmet())
+app.use(express.json({ limit: '10mb' }));
 
 // Middleware
 app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://192.168.69.2:5173',
-    process.env.FRONTEND_URL // <-- ADD THIS LINE (use your IP)
+    process.env.FRONTEND_URL
   ]
 })); 
 app.use(express.json());
