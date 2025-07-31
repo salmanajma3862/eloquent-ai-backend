@@ -1,6 +1,6 @@
 import express from 'express';
 import { body } from 'express-validator';
-import { registerUser, loginUser, googleLogin, getMe, logoutUser, handleRefreshToken } from '../controllers/auth.controller.js';
+import { registerUser, loginUser, googleLogin, getMe, logoutUser } from '../controllers/auth.controller.js';
 import authMiddleware from '../middleware/auth.middleware.js';
 import { handleValidationErrors } from '../middleware/validation.middleware.js';
 
@@ -65,8 +65,5 @@ router.get('/me', authMiddleware, getMe);
 
 // @route   POST /api/auth/logout
 router.post('/logout', logoutUser);
-
-// @route   POST /api/auth/refresh-token
-router.post('/refresh-token', handleRefreshToken);
 
 export default router;

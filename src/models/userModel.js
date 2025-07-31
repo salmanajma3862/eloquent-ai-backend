@@ -68,9 +68,7 @@ const userSchema = new mongoose.Schema({
     signupIpAddress: {
         type: String,
     },
-    refreshToken: {
-        type: String,
-    }
+
 }, {
     timestamps: true // Automatically adds createdAt and updatedAt
 });

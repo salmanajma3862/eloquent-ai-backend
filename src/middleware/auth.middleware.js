@@ -5,8 +5,8 @@ import Session from '../models/sessionModel.js';
 const authMiddleware = async (req, res, next) => {
     try {
         let token;
-        if (req.cookies.accessToken) {
-            token = req.cookies.accessToken;
+        if (req.cookies.jwt) {
+            token = req.cookies.jwt;
         }
 
         if (!token) {
