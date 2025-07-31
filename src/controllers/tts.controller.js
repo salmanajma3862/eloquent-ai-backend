@@ -1,5 +1,6 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import Session from '../models/sessionModel.js';
 import axios from 'axios';
 
@@ -16,6 +17,13 @@ const s3Client = new S3Client({
 export const generateAndStreamAudio = async (req, res) => {
     try {
         const { sessionId } = req.params;
+
+        // --- NEW: ObjectID Validation ---
+        if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+            return res.status(400).json({ message: 'Invalid session ID format.' });
+        }
+        // -----------------------------
+
         let debugLog = [];
         debugLog.push({ step: 'start', sessionId });
         const session = await Session.findById(sessionId);
@@ -27,9 +35,21 @@ export const generateAndStreamAudio = async (req, res) => {
             return res.status(409).json({ message: 'Audio already generated.', debugLog });
         }
 
-        if (!session || !session.analysis?.improvedText) {
+        if (!session) {
+            debugLog.push({ step: 'session_not_found' });
+            return res.status(404).json({ message: 'Session not found.' });
+        }
+
+        // --- NEW: Session Ownership Verification ---
+        if (session.user.toString() !== req.user._id.toString()) {
+            debugLog.push({ step: 'unauthorized_access' });
+            return res.status(403).json({ message: 'Not authorized to access this session.' });
+        }
+        // ------------------------------------------
+
+        if (!session.analysis?.improvedText) {
             debugLog.push({ step: 'analysis_missing', session });
-            return res.status(404).json({ message: 'Analysis text not found.', debugLog });
+            return res.status(404).json({ message: 'Analysis text not found.' });
         }
 
         const suggestedText = session.analysis.improvedText;
@@ -71,7 +91,18 @@ export const generateAndStreamAudio = async (req, res) => {
 
         } catch (err) {
             debugLog.push({ step: 'unreal_speech_api_error', error: err?.message || err });
-            return res.status(500).json({ message: 'Failed to generate audio from Unreal Speech.', debugLog });
+
+            // --- NEW: Sanitize error response ---
+            const isProduction = process.env.NODE_ENV === 'production';
+            const errorMessage = isProduction
+                ? "We're sorry, an unexpected error occurred. Please try again later."
+                : 'Failed to generate audio from Unreal Speech.';
+
+            return res.status(500).json({
+                message: errorMessage,
+                ...(isProduction ? {} : { debugLog })
+            });
+            // ------------------------------------
         }
 
         // 4. --- UPLOAD TO R2 (in the background) ---
@@ -100,8 +131,22 @@ export const generateAndStreamAudio = async (req, res) => {
         res.send(audioBuffer); // Send the complete buffer at once.
 
     } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error("On-demand TTS Error (Unreal Speech):", error);
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : "Failed to generate audio.";
+
         const debugLog = [{ step: 'catch_error', error: error?.message || error }];
-        res.status(500).json({ message: "Failed to generate audio.", debugLog });
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({
+            message: errorMessage,
+            ...(isProduction ? {} : { debugLog })
+        });
+        // ---------------------------------------------
     }
 };

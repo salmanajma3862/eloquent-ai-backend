@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
 import User from '../models/userModel.js';
-import generateToken from '../utils/generateToken.js';
+import { generateAccessToken, generateRefreshToken } from '../utils/generateToken.js';
+import jwt from 'jsonwebtoken';
 
 const client = new OAuth2Client(process.env.AUTH_GOOGLE_ID);
 
@@ -49,6 +50,30 @@ const registerUser = async (req, res) => {
         });
 
         if (user) {
+            // 1. Generate both tokens
+            const accessToken = generateAccessToken(user._id);
+            const refreshToken = generateRefreshToken(user._id);
+
+            // 2. Save the Refresh Token to the user's document in the DB
+            user.refreshToken = refreshToken;
+            await user.save();
+
+            // 3. Set both tokens as secure cookies
+            res.cookie('accessToken', accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 15 * 60 * 1000 // 15 minutes in ms
+            });
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+            });
+
+            // The JSON response now only sends the user info, NOT the tokens.
             res.status(201).json({
                 _id: user._id,
                 name: user.name,
@@ -57,13 +82,23 @@ const registerUser = async (req, res) => {
                 sessionsTaken: user.sessionsTaken,
                 sessionsRemaining: user.sessionsRemaining,
                 totalSessions: user.totalSessions,
-                token: generateToken(user._id),
             });
         } else {
             res.status(400).json({ message: 'Invalid user data' });
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        // Step 1: Always log the full, detailed error for our internal debugging.
+        console.error('Register user error:', error);
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : error.message; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
 
@@ -80,8 +115,31 @@ const loginUser = async (req, res) => {
         if (user && (await bcrypt.compare(password, user.password))) {
             // Update last login
             user.lastLogin = new Date();
+
+            // 1. Generate both tokens
+            const accessToken = generateAccessToken(user._id);
+            const refreshToken = generateRefreshToken(user._id);
+
+            // 2. Save the Refresh Token to the user's document in the DB
+            user.refreshToken = refreshToken;
             await user.save();
 
+            // 3. Set both tokens as secure cookies
+            res.cookie('accessToken', accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 15 * 60 * 1000 // 15 minutes in ms
+            });
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+            });
+
+            // The JSON response now only sends the user info, NOT the tokens.
             res.json({
                 _id: user._id,
                 name: user.name,
@@ -90,13 +148,23 @@ const loginUser = async (req, res) => {
                 sessionsTaken: user.sessionsTaken,
                 sessionsRemaining: user.sessionsRemaining,
                 totalSessions: user.totalSessions,
-                token: generateToken(user._id),
             });
         } else {
             res.status(401).json({ message: 'Invalid credentials' });
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        // Step 1: Always log the full, detailed error for our internal debugging.
+        console.error('Login user error:', error);
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : error.message; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
 
@@ -122,8 +190,31 @@ const googleLogin = async (req, res) => {
         if (user) {
             // User exists, update last login and return user info
             user.lastLogin = new Date();
+
+            // 1. Generate both tokens
+            const accessToken = generateAccessToken(user._id);
+            const refreshToken = generateRefreshToken(user._id);
+
+            // 2. Save the Refresh Token to the user's document in the DB
+            user.refreshToken = refreshToken;
             await user.save();
 
+            // 3. Set both tokens as secure cookies
+            res.cookie('accessToken', accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 15 * 60 * 1000 // 15 minutes in ms
+            });
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+            });
+
+            // The JSON response now only sends the user info, NOT the tokens.
             res.json({
                 _id: user._id,
                 name: user.name,
@@ -132,7 +223,6 @@ const googleLogin = async (req, res) => {
                 sessionsTaken: user.sessionsTaken,
                 sessionsRemaining: user.sessionsRemaining,
                 totalSessions: user.totalSessions,
-                token: generateToken(user._id),
             });
         } else {
             // --- IP-BASED ABUSE PREVENTION FOR GOOGLE SIGN-UP ---
@@ -156,6 +246,30 @@ const googleLogin = async (req, res) => {
                 signupIpAddress: ipAddress, // Store the IP address
             });
 
+            // 1. Generate both tokens
+            const accessToken = generateAccessToken(user._id);
+            const refreshToken = generateRefreshToken(user._id);
+
+            // 2. Save the Refresh Token to the user's document in the DB
+            user.refreshToken = refreshToken;
+            await user.save();
+
+            // 3. Set both tokens as secure cookies
+            res.cookie('accessToken', accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 15 * 60 * 1000 // 15 minutes in ms
+            });
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days in ms
+            });
+
+            // The JSON response now only sends the user info, NOT the tokens.
             res.status(201).json({
                 _id: user._id,
                 name: user.name,
@@ -164,11 +278,21 @@ const googleLogin = async (req, res) => {
                 sessionsTaken: user.sessionsTaken,
                 sessionsRemaining: user.sessionsRemaining,
                 totalSessions: user.totalSessions,
-                token: generateToken(user._id),
             });
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        // Step 1: Always log the full, detailed error for our internal debugging.
+        console.error('Google login error:', error);
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : error.message; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
 
@@ -190,9 +314,133 @@ const getMe = async (req, res) => {
             totalSessions: user.totalSessions,
         });
     } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Get user profile error:', error);
-        res.status(500).json({ message: 'Server error' });
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Server error'; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
 
-export { registerUser, loginUser, googleLogin, getMe };
+// @desc    Handle refresh token
+// @route   POST /api/auth/refresh-token
+// @access  Private (via refresh token)
+const handleRefreshToken = async (req, res) => {
+    try {
+        // 1. Get the refreshToken from its cookie
+        const refreshToken = req.cookies.refreshToken;
+
+        if (!refreshToken) {
+            return res.status(401).json({ message: 'No refresh token provided' });
+        }
+
+        // 2. Verify the token using REFRESH_TOKEN_SECRET
+        let decoded;
+        try {
+            decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        } catch (error) {
+            return res.status(403).json({ message: 'Invalid refresh token' });
+        }
+
+        // 3. Find the user in the DB and check if the received token matches the one stored
+        const user = await User.findById(decoded.id).select('-password');
+        if (!user) {
+            return res.status(403).json({ message: 'User not found' });
+        }
+
+        // Check if the refresh token matches the one stored in the database
+        if (user.refreshToken !== refreshToken) {
+            return res.status(403).json({ message: 'Invalid refresh token - token mismatch' });
+        }
+
+        // 4. Generate a new Access Token
+        const newAccessToken = generateAccessToken(user._id);
+
+        // 5. Set the new access token as a cookie
+        res.cookie('accessToken', newAccessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 15 * 60 * 1000 // 15 minutes in ms
+        });
+
+        res.json({ message: 'Access token refreshed successfully' });
+    } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
+        console.error('Refresh token error:', error);
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Refresh token error'; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
+    }
+};
+
+// @desc    Logout user & clear cookie
+// @route   POST /api/auth/logout
+// @access  Private
+const logoutUser = async (req, res) => {
+    try {
+        // Get the refresh token from cookie to identify the user
+        const refreshToken = req.cookies.refreshToken;
+
+        if (refreshToken) {
+            try {
+                // Verify and decode the refresh token to get user ID
+                const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+
+                // Find the user and clear their refresh token from the database
+                const user = await User.findById(decoded.id);
+                if (user) {
+                    user.refreshToken = null;
+                    await user.save();
+                }
+            } catch (error) {
+                // If token verification fails, still proceed with clearing cookies
+                console.log('Token verification failed during logout:', error.message);
+            }
+        }
+
+        // Clear both httpOnly cookies
+        res.clearCookie('accessToken', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        res.clearCookie('refreshToken', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        res.json({ message: 'Logged out successfully' });
+    } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
+        console.error('Logout error:', error);
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Logout error'; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
+    }
+};
+
+export { registerUser, loginUser, googleLogin, getMe, logoutUser, handleRefreshToken };

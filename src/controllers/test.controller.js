@@ -363,8 +363,18 @@ const getTestTopic = async (req, res) => {
             totalTopics: ieltsTopics.length
         });
     } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Get topic error:', error);
-        res.status(500).json({ message: 'Error fetching topic' });
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Error fetching topic'; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
 
@@ -405,8 +415,18 @@ const createTestSession = async (req, res) => {
             }
         });
     } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Create session error:', error);
-        res.status(500).json({ message: 'Error creating test session' });
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Error creating test session'; // Only show detailed messages in development
+
+        // Step 2: Send a generic, safe message in production.
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
 
@@ -512,8 +532,18 @@ const transcribePrerecorded = async (req, res) => {
     res.status(201).json({ sessionId: newSession._id });
 
   } catch (error) {
+    // Step 1: Always log the full, detailed error for our internal debugging.
     console.error("Error in transcribePrerecorded:", error);
-    res.status(500).json({ message: 'Error processing audio' });
+
+    // --- NEW: Sanitize the response sent to the user ---
+    const isProduction = process.env.NODE_ENV === 'production';
+    const errorMessage = isProduction
+        ? "We're sorry, an unexpected error occurred. Please try again later."
+        : 'Error processing audio'; // Only show detailed messages in development
+
+    // Step 2: Send a generic, safe message in production.
+    res.status(500).json({ message: errorMessage });
+    // ---------------------------------------------
   }
 };
 

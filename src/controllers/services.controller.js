@@ -52,8 +52,18 @@ export const getDeepgramToken = async (req, res) => {
     res.json({ deepgramToken: newKeyData.key });
 
   } catch (error) {
+    // Step 1: Always log the full, detailed error for our internal debugging.
     console.error("Fatal error in getDeepgramToken (manual fetch):", error);
-    res.status(500).json({ message: 'Fatal error generating Deepgram token' });
+
+    // --- NEW: Sanitize the response sent to the user ---
+    const isProduction = process.env.NODE_ENV === 'production';
+    const errorMessage = isProduction
+        ? "We're sorry, an unexpected error occurred. Please try again later."
+        : 'Fatal error generating Deepgram token'; // Only show detailed messages in development
+
+    // Step 2: Send a generic, safe message in production.
+    res.status(500).json({ message: errorMessage });
+    // ---------------------------------------------
   }
 };
 
@@ -98,25 +108,39 @@ const getPresignedR2Url = async (req, res) => {
             expiresIn: 60
         });
     } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Get R2 presigned URL error:', error);
-        
-        // Provide more specific error messages
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        // Provide more specific error messages but sanitize for production
         if (error.name === 'CredentialsProviderError') {
-            return res.status(500).json({ 
-                message: 'Invalid R2 credentials. Please check your access keys.' 
-            });
-        }
-        
-        if (error.name === 'NetworkingError') {
-            return res.status(500).json({ 
-                message: 'Network error connecting to R2. Please check your configuration.' 
+            return res.status(500).json({
+                message: isProduction
+                    ? "We're sorry, an unexpected error occurred. Please try again later."
+                    : 'Invalid R2 credentials. Please check your access keys.'
             });
         }
 
-        res.status(500).json({ 
-            message: 'Error generating upload URL',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        if (error.name === 'NetworkingError') {
+            return res.status(500).json({
+                message: isProduction
+                    ? "We're sorry, an unexpected error occurred. Please try again later."
+                    : 'Network error connecting to R2. Please check your configuration.'
+            });
+        }
+
+        // Step 2: Send a generic, safe message in production.
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Error generating upload URL';
+
+        res.status(500).json({
+            message: errorMessage,
+            ...(isProduction ? {} : { error: error.message })
         });
+        // ---------------------------------------------
     }
 };
 

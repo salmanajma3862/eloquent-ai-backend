@@ -1,13 +1,55 @@
 import express from 'express';
 import multer from 'multer';
+import { body } from 'express-validator';
 import authMiddleware from '../middleware/auth.middleware.js';
+import { handleValidationErrors, validateFileUpload } from '../middleware/validation.middleware.js';
 import { getTestTopic, createTestSession, transcribePrerecorded } from '../controllers/test.controller.js';
 import { getDeepgramToken, getPresignedR2Url } from '../controllers/services.controller.js';
 
 const router = express.Router();
 
 // Configure multer for in-memory storage
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB limit
+        fieldSize: 1024 * 1024 // 1MB field size limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Only allow audio files
+        if (file.mimetype.startsWith('audio/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only audio files are allowed'), false);
+        }
+    }
+});
+
+// --- NEW: Validation Chains ---
+const transcribeValidation = [
+    body('topicText')
+        .notEmpty()
+        .withMessage('Topic text is required')
+        .isLength({ min: 10, max: 1000 })
+        .withMessage('Topic text must be between 10 and 1000 characters')
+        .trim()
+        .escape(),
+    body('durationInSeconds')
+        .isInt({ min: 1, max: 300 })
+        .withMessage('Duration must be a valid number between 1 and 300 seconds')
+        .toInt()
+];
+
+const createSessionValidation = [
+    body('topicText')
+        .notEmpty()
+        .withMessage('Topic text is required')
+        .isLength({ min: 10, max: 1000 })
+        .withMessage('Topic text must be between 10 and 1000 characters')
+        .trim()
+        .escape()
+];
+// ---------------------------
 
 // Apply auth middleware to all routes in this router
 router.use(authMiddleware);
@@ -33,13 +75,16 @@ router.get('/r2-upload-url', getPresignedR2Url);
 router.post(
   '/transcribe',
   authMiddleware,
+  transcribeValidation,
+  handleValidationErrors,
   upload.single('audio'), // Expects a single file on the 'audio' field
+  validateFileUpload, // Additional file validation
   transcribePrerecorded
 );
 
 // @route   POST /api/test/session
 // @desc    Create a new test session with results
 // @access  Private
-router.post('/session', createTestSession);
+router.post('/session', createSessionValidation, handleValidationErrors, createTestSession);
 
 export default router;

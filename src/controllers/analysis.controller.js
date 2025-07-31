@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import mongoose from 'mongoose';
 import Session from '../models/sessionModel.js';
 
 // Initialize Anthropic client
@@ -12,6 +13,12 @@ const anthropic = new Anthropic({
 export const getAnalysis = async (req, res) => {
     try {
         const { sessionId } = req.params;
+
+        // --- NEW: ObjectID Validation ---
+        if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+            return res.status(400).json({ message: 'Invalid session ID format.' });
+        }
+        // -----------------------------
 
         // Get session from database
         const session = await Session.findById(sessionId);
@@ -104,25 +111,37 @@ The JSON object must have the following structure:
         res.json(session);
 
     } catch (error) {
+        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Analysis error:', error);
-        
-        // Handle specific Anthropic API errors
+
+        // --- NEW: Sanitize the response sent to the user ---
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        // Handle specific Anthropic API errors with appropriate messages
         if (error.status === 401) {
-            return res.status(500).json({ 
-                message: 'AI service authentication failed. Please check API configuration.' 
+            return res.status(500).json({
+                message: isProduction
+                    ? "We're sorry, an unexpected error occurred. Please try again later."
+                    : 'AI service authentication failed. Please check API configuration.'
             });
         } else if (error.status === 429) {
-            return res.status(429).json({ 
-                message: 'AI service rate limit exceeded. Please try again later.' 
+            return res.status(429).json({
+                message: 'AI service rate limit exceeded. Please try again later.'
             });
         } else if (error.status >= 400 && error.status < 500) {
-            return res.status(500).json({ 
-                message: 'AI service request failed. Please try again.' 
-            }); 
+            return res.status(500).json({
+                message: isProduction
+                    ? "We're sorry, an unexpected error occurred. Please try again later."
+                    : 'AI service request failed. Please try again.'
+            });
         }
 
-        res.status(500).json({ 
-            message: 'Failed to generate analysis. Please try again later.' 
-        });
+        // Step 2: Send a generic, safe message in production.
+        const errorMessage = isProduction
+            ? "We're sorry, an unexpected error occurred. Please try again later."
+            : 'Failed to generate analysis. Please try again later.';
+
+        res.status(500).json({ message: errorMessage });
+        // ---------------------------------------------
     }
 };
