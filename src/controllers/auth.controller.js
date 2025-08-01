@@ -57,7 +57,7 @@ const registerUser = async (req, res) => {
             res.cookie('jwt', token, { // Name the cookie 'jwt'
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
+                sameSite: 'none',
                 maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
 
@@ -110,7 +110,7 @@ const loginUser = async (req, res) => {
             res.cookie('jwt', token, { // Name the cookie 'jwt'
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
+                sameSite: 'none',
                 maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
 
@@ -172,7 +172,7 @@ const googleLogin = async (req, res) => {
             res.cookie('jwt', token, { // Name the cookie 'jwt'
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
+                sameSite: 'none',
                 maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
 
@@ -214,7 +214,7 @@ const googleLogin = async (req, res) => {
             res.cookie('jwt', token, { // Name the cookie 'jwt'
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
+                sameSite: 'none',
                 maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
 
