@@ -4,27 +4,46 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import Session from '../models/sessionModel.js';
 
-// Initialize clients outside the function for better performance
-const pollyClient = new PollyClient({
-    region: process.env.AWS_REGION,
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    }
-});
+// --- NEW CACHING PATTERN ---
+let pollyClient;
+let s3Client;
 
-// Initialize S3 client for Cloudflare R2
-const s3Client = new S3Client({
-    region: 'auto',
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    },
-});
+function getPollyClient() {
+    if (!pollyClient) {
+        console.log("Initializing PollyClient for the first time...");
+        pollyClient = new PollyClient({
+            region: process.env.AWS_REGION,
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            }
+        });
+    }
+    return pollyClient;
+}
+
+function getS3Client() {
+    if (!s3Client) {
+        console.log("Initializing S3Client for the first time...");
+        s3Client = new S3Client({
+            region: 'auto',
+            endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+            credentials: {
+                accessKeyId: process.env.R2_ACCESS_KEY_ID,
+                secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+            },
+        });
+    }
+    return s3Client;
+}
+// -------------------------
 
 export const generateAndStreamAudio = async (req, res) => {
     try {
+        // Use the getter functions to get the initialized clients
+        const polly = getPollyClient();
+        const s3 = getS3Client();
+
         const { sessionId } = req.params;
 
         // --- NEW: ObjectID Validation ---
@@ -77,7 +96,7 @@ export const generateAndStreamAudio = async (req, res) => {
                 VoiceId: "Joanna" // A standard, clear, and popular female voice
             });
 
-            const response = await pollyClient.send(command);
+            const response = await polly.send(command);
 
             // The audio is a ReadableStream. We need to convert it to a Buffer to be able
             // to both send it to the user and upload it to R2.
@@ -114,7 +133,7 @@ export const generateAndStreamAudio = async (req, res) => {
             ContentType: 'audio/mpeg',
         });
 
-        s3Client.send(uploadCommand).then(async () => {
+        s3.send(uploadCommand).then(async () => {
             const suggestedAudioUrl = `${process.env.R2_PUBLIC_URL}/${audioKey}`;
             session.suggestedAudioUrl = suggestedAudioUrl;
             await session.save();
