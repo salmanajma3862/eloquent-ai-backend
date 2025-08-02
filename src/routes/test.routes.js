@@ -75,11 +75,11 @@ router.get('/r2-upload-url', getPresignedR2Url);
 router.post(
   '/transcribe',
   authMiddleware,
-  transcribeValidation,
-  handleValidationErrors,
-  upload.single('audio'), // Expects a single file on the 'audio' field
-  validateFileUpload, // Additional file validation
-  transcribePrerecorded
+  upload.single('audio'), // 1. Multer runs first to parse the form and file
+  transcribeValidation,   // 2. Validation runs second on the now-populated req.body
+  handleValidationErrors, // 3. The error handler runs third
+  validateFileUpload,     // 4. Additional file validation
+  transcribePrerecorded   // 5. The controller runs last
 );
 
 // @route   POST /api/test/session
