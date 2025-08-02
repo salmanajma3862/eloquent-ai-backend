@@ -16,17 +16,23 @@ const app = express();
 app.use(cookieParser());
 app.set('trust proxy', 1);
 app.use(helmet())
-app.use(express.json({ limit: '10mb' }));
+
+// Increase limits for file uploads
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://192.168.69.2:5173',
+    'https://eloquent-ai.vercel.app',
     process.env.FRONTEND_URL
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  maxAge: 86400 // 24 hours
 }));
-app.use(express.json());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/test', testRoutes);
