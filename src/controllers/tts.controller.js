@@ -1,8 +1,17 @@
+import { PollyClient, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import Session from '../models/sessionModel.js';
-import axios from 'axios';
+
+// Initialize clients outside the function for better performance
+const pollyClient = new PollyClient({
+    region: process.env.AWS_REGION,
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    }
+});
 
 // Initialize S3 client for Cloudflare R2
 const s3Client = new S3Client({
@@ -55,48 +64,39 @@ export const generateAndStreamAudio = async (req, res) => {
         const suggestedText = session.analysis.improvedText;
         debugLog.push({ step: 'got_suggested_text', suggestedText });
 
-        // 2. Generate audio using Unreal Speech API
-        const UNREAL_API_KEY = process.env.UNREAL_API_KEY;
+        // --- NEW: AWS Polly API Call ---
         let audioBuffer;
 
         try {
-            debugLog.push({ step: 'calling_unreal_speech_api' });
+            debugLog.push({ step: 'calling_aws_polly_api' });
 
-            const response = await axios.post("https://api.unrealspeech.com/stream/", {
-                method: 'POST', 
-                headers: {
-                    'Authorization': `Bearer ${UNREAL_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                responseType: 'arraybuffer',
-                body: JSON.stringify({
-                    Text: suggestedText,
-                    VoiceId: "Dan", // A standard, clear male voice
-                    Bitrate: "192k",
-                    Speed: "0",
-                    Pitch: "1.0"
-                })
+            const command = new SynthesizeSpeechCommand({
+                Engine: "neural", // Use the high-quality neural engine for best results
+                OutputFormat: "mp3",
+                Text: suggestedText,
+                VoiceId: "Joanna" // A standard, clear, and popular female voice
             });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                debugLog.push({ step: 'unreal_speech_error', status: response.status, error: errorText });
-                console.error("Unreal Speech API returned an error:", errorText);
-                return res.status(500).json({ message: 'Failed to generate audio from Unreal Speech.', debugLog });
-            }
+            const response = await pollyClient.send(command);
 
-            // Convert response to buffer
-            audioBuffer = Buffer.from(await response.arrayBuffer());
+            // The audio is a ReadableStream. We need to convert it to a Buffer to be able
+            // to both send it to the user and upload it to R2.
+            const audioStream = response.AudioStream;
+            const chunks = [];
+            for await (const chunk of audioStream) {
+                chunks.push(chunk);
+            }
+            audioBuffer = Buffer.concat(chunks);
             debugLog.push({ step: 'audio_buffer_created', bufferLength: audioBuffer.length });
 
         } catch (err) {
-            debugLog.push({ step: 'unreal_speech_api_error', error: err?.message || err });
+            debugLog.push({ step: 'aws_polly_api_error', error: err?.message || err });
 
             // --- NEW: Sanitize error response ---
             const isProduction = process.env.NODE_ENV === 'production';
             const errorMessage = isProduction
                 ? "We're sorry, an unexpected error occurred. Please try again later."
-                : 'Failed to generate audio from Unreal Speech.';
+                : 'Failed to generate audio from AWS Polly.';
 
             return res.status(500).json({
                 message: errorMessage,
@@ -118,7 +118,7 @@ export const generateAndStreamAudio = async (req, res) => {
             const suggestedAudioUrl = `${process.env.R2_PUBLIC_URL}/${audioKey}`;
             session.suggestedAudioUrl = suggestedAudioUrl;
             await session.save();
-            console.log(`Successfully saved suggested audio (Unreal Speech) for session ${sessionId}`);
+            console.log(`Successfully saved suggested audio (AWS Polly) for session ${sessionId}`);
             debugLog.push({ step: 'audio_uploaded', suggestedAudioUrl });
         }).catch(err => {
             console.error(`Failed to upload suggested audio for session ${sessionId}:`, err);
@@ -132,7 +132,7 @@ export const generateAndStreamAudio = async (req, res) => {
 
     } catch (error) {
         // Step 1: Always log the full, detailed error for our internal debugging.
-        console.error("On-demand TTS Error (Unreal Speech):", error);
+        console.error("On-demand TTS Error (AWS Polly):", error);
 
         // --- NEW: Sanitize the response sent to the user ---
         const isProduction = process.env.NODE_ENV === 'production';
