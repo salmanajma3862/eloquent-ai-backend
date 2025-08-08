@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import mongoose from 'mongoose';
 import Session from '../models/sessionModel.js';
+import { sendError } from '../utils/error.util.js';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -16,7 +17,7 @@ export const getAnalysis = async (req, res) => {
 
         // --- NEW: ObjectID Validation ---
         if (!mongoose.Types.ObjectId.isValid(sessionId)) {
-            return res.status(400).json({ message: 'Invalid session ID format.' });
+            return res.status(400).json({ code: 'DB_CAST_ERROR', message: 'Invalid session ID format.' });
         }
         // -----------------------------
 
@@ -24,12 +25,12 @@ export const getAnalysis = async (req, res) => {
         const session = await Session.findById(sessionId);
         
         if (!session) {
-            return res.status(404).json({ message: 'Session not found' });
+            return res.status(404).json({ code: 'SESSION_NOT_FOUND', message: 'Session not found' });
         }
 
         // Check if the session belongs to the authenticated user
         if (session.user.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Not authorized to access this session' });
+            return res.status(403).json({ code: 'SESSION_FORBIDDEN', message: 'Not authorized to access this session' });
         }
 
         // Check for existing analysis to save time and API costs
@@ -39,7 +40,7 @@ export const getAnalysis = async (req, res) => {
 
         // Check if we have transcribed text to analyze
         if (!session.transcribedText || session.transcribedText.trim() === '') {
-            return res.status(400).json({ message: 'No transcribed text available for analysis' });
+            return res.status(400).json({ code: 'NO_TRANSCRIPT', message: 'No transcribed text available for analysis' });
         }
 
         // Engineer the prompt for Claude
@@ -88,9 +89,7 @@ The JSON object must have the following structure:
         } catch (parseError) {
             console.error('Failed to parse Claude response as JSON:', parseError);
             console.error('Claude response:', responseText);
-            return res.status(500).json({ 
-                message: 'Failed to parse AI analysis response' 
-            });
+            return sendError(res, parseError, { context: 'ai-parse' });
         }
 
         // Calculate additional metrics
@@ -111,37 +110,7 @@ The JSON object must have the following structure:
         res.json(session);
 
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Analysis error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        // Handle specific Anthropic API errors with appropriate messages
-        if (error.status === 401) {
-            return res.status(500).json({
-                message: isProduction
-                    ? "We're sorry, an unexpected error occurred. Please try again later."
-                    : 'AI service authentication failed. Please check API configuration.'
-            });
-        } else if (error.status === 429) {
-            return res.status(429).json({
-                message: 'AI service rate limit exceeded. Please try again later.'
-            });
-        } else if (error.status >= 400 && error.status < 500) {
-            return res.status(500).json({
-                message: isProduction
-                    ? "We're sorry, an unexpected error occurred. Please try again later."
-                    : 'AI service request failed. Please try again.'
-            });
-        }
-
-        // Step 2: Send a generic, safe message in production.
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : 'Failed to generate analysis. Please try again later.';
-
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+        return sendError(res, error, { context: 'anthropic' });
     }
 };

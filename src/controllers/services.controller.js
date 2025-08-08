@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
+import { sendError } from '../utils/error.util.js';
 
 // Initialize S3 client for Cloudflare R2
 const s3Client = new S3Client({
@@ -16,10 +17,10 @@ const s3Client = new S3Client({
 // @route   GET /api/test/deepgram-token
 // @access  Private
 export const getDeepgramToken = async (req, res) => {
-  try {
+    try {
     if (!process.env.DEEPGRAM_API_KEY || !process.env.DEEPGRAM_PROJECT_ID) {
       console.error("Deepgram API Key or Project ID is not configured.");
-      return res.status(500).json({ message: 'Server configuration error.' });
+            return res.status(500).json({ code: 'TRANSCRIPTION_CONFIG_ERROR', message: 'Server configuration error.' });
     }
 
     const DG_API_KEY = process.env.DEEPGRAM_API_KEY;
@@ -43,28 +44,20 @@ export const getDeepgramToken = async (req, res) => {
 
     const newKeyData = await response.json();
 
-    if (!response.ok) {
-      console.error("Deepgram API returned an error:", newKeyData);
-      throw new Error(newKeyData.reason || 'Failed to create Deepgram key');
-    }
+        if (!response.ok) {
+            console.error("Deepgram API returned an error:", newKeyData);
+            const err = new Error(newKeyData.reason || 'Failed to create Deepgram key');
+            err.status = response.status;
+            throw err;
+        }
 
     // Send the temporary key to the frontend
     res.json({ deepgramToken: newKeyData.key });
 
-  } catch (error) {
-    // Step 1: Always log the full, detailed error for our internal debugging.
-    console.error("Fatal error in getDeepgramToken (manual fetch):", error);
-
-    // --- NEW: Sanitize the response sent to the user ---
-    const isProduction = process.env.NODE_ENV === 'production';
-    const errorMessage = isProduction
-        ? "We're sorry, an unexpected error occurred. Please try again later."
-        : 'Fatal error generating Deepgram token'; // Only show detailed messages in development
-
-    // Step 2: Send a generic, safe message in production.
-    res.status(500).json({ message: errorMessage });
-    // ---------------------------------------------
-  }
+    } catch (error) {
+        console.error("Fatal error in getDeepgramToken (manual fetch):", error);
+        return sendError(res, error, { context: 'deepgram' });
+    }
 };
 
 // @desc    Generate presigned URL for Cloudflare R2 upload
@@ -76,6 +69,7 @@ const getPresignedR2Url = async (req, res) => {
         if (!process.env.R2_BUCKET_NAME || !process.env.R2_ACCESS_KEY_ID || 
             !process.env.R2_SECRET_ACCESS_KEY || !process.env.CLOUDFLARE_ACCOUNT_ID) {
             return res.status(500).json({ 
+                code: 'STORAGE_CONFIG_ERROR',
                 message: 'R2 configuration incomplete. Please check environment variables.' 
             });
         }
@@ -108,39 +102,8 @@ const getPresignedR2Url = async (req, res) => {
             expiresIn: 60
         });
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Get R2 presigned URL error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        // Provide more specific error messages but sanitize for production
-        if (error.name === 'CredentialsProviderError') {
-            return res.status(500).json({
-                message: isProduction
-                    ? "We're sorry, an unexpected error occurred. Please try again later."
-                    : 'Invalid R2 credentials. Please check your access keys.'
-            });
-        }
-
-        if (error.name === 'NetworkingError') {
-            return res.status(500).json({
-                message: isProduction
-                    ? "We're sorry, an unexpected error occurred. Please try again later."
-                    : 'Network error connecting to R2. Please check your configuration.'
-            });
-        }
-
-        // Step 2: Send a generic, safe message in production.
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : 'Error generating upload URL';
-
-        res.status(500).json({
-            message: errorMessage,
-            ...(isProduction ? {} : { error: error.message })
-        });
-        // ---------------------------------------------
+        return sendError(res, error, { context: 'r2' });
     }
 };
 

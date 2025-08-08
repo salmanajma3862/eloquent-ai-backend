@@ -3,6 +3,7 @@ import User from '../models/userModel.js';
 import { createClient } from '@deepgram/sdk';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
+import { sendError } from '../utils/error.util.js';
 
 // Initialize S3 client for Cloudflare R2
 const s3Client = new S3Client({
@@ -388,6 +389,7 @@ const createTestSession = async (req, res) => {
         // Validate required fields
         if (!topicText || !audioUrl || !durationInSeconds) {
             return res.status(400).json({ 
+                code: 'VALIDATION_ERROR',
                 message: 'Missing required fields: topicText, audioUrl, and durationInSeconds are required' 
             });
         }
@@ -415,18 +417,8 @@ const createTestSession = async (req, res) => {
             }
         });
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Create session error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : 'Error creating test session'; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+        return sendError(res, error);
     }
 };
 
@@ -434,10 +426,10 @@ const createTestSession = async (req, res) => {
 // @route   POST /api/test/transcribe
 // @access  Private
 const transcribePrerecorded = async (req, res) => {
-  try {
+    try {
     const { topicText, durationInSeconds } = req.body;
     if (!req.file || !topicText || !durationInSeconds) {
-      return res.status(400).json({ message: 'Missing required fields.' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Missing required fields.' });
     }
 
     const user = await User.findById(req.user._id);
@@ -451,13 +443,13 @@ const transcribePrerecorded = async (req, res) => {
         user.sessionsRemaining = 3; // Give them 3 new free credits
         user.sessionsTaken = 0; // Reset their paid session count
         await user.save();
-        return res.status(403).json({ message: "Your premium plan has expired." });
+        return res.status(403).json({ code: 'SUBSCRIPTION_EXPIRED', message: "Your premium plan has expired." });
     }
 
     // 2. Check if the user has any sessions remaining.
     if (user.sessionsRemaining <= 0) {
         // This now correctly blocks both free users and premium users who have hit their limit.
-        return res.status(403).json({ message: "You have no sessions remaining. Please upgrade or wait for your plan to renew." });
+        return res.status(403).json({ code: 'NO_SESSIONS_REMAINING', message: "You have no sessions remaining. Please upgrade or wait for your plan to renew." });
     }
 
     // --- END GATING LOGIC ---
@@ -469,6 +461,7 @@ const transcribePrerecorded = async (req, res) => {
     const MAX_FREE_DURATION = 65; // 60 seconds + 5s grace period
     if (userPlan === 'free' && duration > MAX_FREE_DURATION) {
         return res.status(403).json({
+            code: 'FREE_TIER_LIMIT',
             message: 'Free users are limited to 1-minute recordings. Please upgrade for the full 2-minute experience.'
         });
     }
@@ -487,22 +480,31 @@ const transcribePrerecorded = async (req, res) => {
     });
 
     // 3. Execute the upload
-    await s3Client.send(uploadCommand);
+        try {
+            await s3Client.send(uploadCommand);
+        } catch (err) {
+            return sendError(res, err, { context: 'r2' });
+        }
 
     // 4. Construct the public URL
     const audioUrl = `${process.env.R2_PUBLIC_URL}/${fileKey}`;
     // ----------------------------
 
     // Transcribe the audio (existing logic is fine)
-    const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
-    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
-      req.file.buffer,
-      {
-        model: 'nova-2',
-        smart_format: true,
-      }
-    );
-    if (error) throw error;
+        const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+        let result;
+        try {
+            const resp = await deepgram.listen.prerecorded.transcribeFile(
+                req.file.buffer,
+                {
+                    model: 'nova-2',
+                    smart_format: true,
+                }
+            );
+            result = resp.result;
+        } catch (dgErr) {
+            return sendError(res, dgErr, { context: 'deepgram' });
+        }
     const transcript = result.results.channels[0].alternatives[0].transcript;
 
     // --- MODIFIED: Session Saving Logic ---
@@ -531,20 +533,10 @@ const transcribePrerecorded = async (req, res) => {
     // Return the ID of the new session so the frontend can redirect
     res.status(201).json({ sessionId: newSession._id });
 
-  } catch (error) {
-    // Step 1: Always log the full, detailed error for our internal debugging.
-    console.error("Error in transcribePrerecorded:", error);
-
-    // --- NEW: Sanitize the response sent to the user ---
-    const isProduction = process.env.NODE_ENV === 'production';
-    const errorMessage = isProduction
-        ? "We're sorry, an unexpected error occurred. Please try again later."
-        : 'Error processing audio'; // Only show detailed messages in development
-
-    // Step 2: Send a generic, safe message in production.
-    res.status(500).json({ message: errorMessage });
-    // ---------------------------------------------
-  }
+    } catch (error) {
+        console.error("Error in transcribePrerecorded:", error);
+        return sendError(res, error);
+    }
 };
 
 export { getTestTopic, createTestSession, transcribePrerecorded };

@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import Session from '../models/sessionModel.js';
+import { sendError } from '../utils/error.util.js';
 
 // --- NEW CACHING PATTERN ---
 let pollyClient;
@@ -48,7 +49,7 @@ export const generateAndStreamAudio = async (req, res) => {
 
         // --- NEW: ObjectID Validation ---
         if (!mongoose.Types.ObjectId.isValid(sessionId)) {
-            return res.status(400).json({ message: 'Invalid session ID format.' });
+            return res.status(400).json({ code: 'DB_CAST_ERROR', message: 'Invalid session ID format.' });
         }
         // -----------------------------
 
@@ -60,24 +61,24 @@ export const generateAndStreamAudio = async (req, res) => {
         // 1. Check if the audio URL already exists. If so, return 409 status
         if (session?.suggestedAudioUrl) {
             debugLog.push({ step: 'audio_exists', url: session.suggestedAudioUrl });
-            return res.status(409).json({ message: 'Audio already generated.', debugLog });
+            return res.status(409).json({ code: 'AUDIO_ALREADY_EXISTS', message: 'Audio already generated.' });
         }
 
         if (!session) {
             debugLog.push({ step: 'session_not_found' });
-            return res.status(404).json({ message: 'Session not found.' });
+            return res.status(404).json({ code: 'SESSION_NOT_FOUND', message: 'Session not found.' });
         }
 
         // --- NEW: Session Ownership Verification ---
         if (session.user.toString() !== req.user._id.toString()) {
             debugLog.push({ step: 'unauthorized_access' });
-            return res.status(403).json({ message: 'Not authorized to access this session.' });
+            return res.status(403).json({ code: 'SESSION_FORBIDDEN', message: 'Not authorized to access this session.' });
         }
         // ------------------------------------------
 
         if (!session.analysis?.improvedText) {
             debugLog.push({ step: 'analysis_missing', session });
-            return res.status(404).json({ message: 'Analysis text not found.' });
+            return res.status(404).json({ code: 'ANALYSIS_TEXT_MISSING', message: 'Analysis text not found.' });
         }
 
         const suggestedText = session.analysis.improvedText;
@@ -110,18 +111,7 @@ export const generateAndStreamAudio = async (req, res) => {
 
         } catch (err) {
             debugLog.push({ step: 'aws_polly_api_error', error: err?.message || err });
-
-            // --- NEW: Sanitize error response ---
-            const isProduction = process.env.NODE_ENV === 'production';
-            const errorMessage = isProduction
-                ? "We're sorry, an unexpected error occurred. Please try again later."
-                : 'Failed to generate audio from AWS Polly.';
-
-            return res.status(500).json({
-                message: errorMessage,
-                ...(isProduction ? {} : { debugLog })
-            });
-            // ------------------------------------
+            return sendError(res, err, { context: 'polly' });
         }
 
         // 4. --- UPLOAD TO R2 (in the background) ---
@@ -150,22 +140,7 @@ export const generateAndStreamAudio = async (req, res) => {
         res.send(audioBuffer); // Send the complete buffer at once.
 
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error("On-demand TTS Error (AWS Polly):", error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : "Failed to generate audio.";
-
-        const debugLog = [{ step: 'catch_error', error: error?.message || error }];
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({
-            message: errorMessage,
-            ...(isProduction ? {} : { debugLog })
-        });
-        // ---------------------------------------------
+        return sendError(res, error, { context: 'polly' });
     }
 };

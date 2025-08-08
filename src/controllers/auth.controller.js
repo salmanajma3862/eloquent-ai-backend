@@ -3,6 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import User from '../models/userModel.js';
 import { generateToken } from '../utils/generateToken.js';
 import jwt from 'jsonwebtoken';
+import { sendError } from '../utils/error.util.js';
 
 const client = new OAuth2Client(process.env.AUTH_GOOGLE_ID);
 
@@ -26,6 +27,7 @@ const registerUser = async (req, res) => {
 
         if (existingAccountsFromIp >= IP_LIMIT) {
             return res.status(403).json({
+                code: 'SIGNUP_IP_LIMIT',
                 message: "Account creation limit for this network has been reached."
             });
         }
@@ -34,7 +36,7 @@ const registerUser = async (req, res) => {
         // Check if user already exists
         const userExists = await User.findOne({ email });
         if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
+            return res.status(409).json({ code: 'USER_EXISTS', message: 'User already exists' });
         }
 
         // Hash password
@@ -72,21 +74,11 @@ const registerUser = async (req, res) => {
                 totalSessions: user.totalSessions,
             });
         } else {
-            res.status(400).json({ message: 'Invalid user data' });
+            res.status(400).json({ code: 'INVALID_USER_DATA', message: 'Invalid user data' });
         }
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Register user error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : error.message; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+        return sendError(res, error, { context: 'db' });
     }
 };
 
@@ -125,21 +117,11 @@ const loginUser = async (req, res) => {
                 totalSessions: user.totalSessions,
             });
         } else {
-            res.status(401).json({ message: 'Invalid credentials' });
+            res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Login user error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : error.message; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+        return sendError(res, error);
     }
 };
 
@@ -194,6 +176,7 @@ const googleLogin = async (req, res) => {
 
             if (existingAccountsFromIp >= IP_LIMIT) {
                 return res.status(403).json({
+                    code: 'SIGNUP_IP_LIMIT',
                     message: "Account creation limit for this network has been reached."
                 });
             }
@@ -230,18 +213,8 @@ const googleLogin = async (req, res) => {
             });
         }
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Google login error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : error.message; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+        return sendError(res, error);
     }
 };
 
@@ -263,18 +236,8 @@ const getMe = async (req, res) => {
             totalSessions: user.totalSessions,
         });
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
-        console.error('Get user profile error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : 'Server error'; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+    console.error('Get user profile error:', error);
+    return sendError(res, error);
     }
 };
 
@@ -290,18 +253,8 @@ const logoutUser = async (req, res) => {
         });
         res.status(200).json({ message: 'User logged out' });
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
-        console.error('Logout error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : 'Logout error'; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+    console.error('Logout error:', error);
+    return sendError(res, error);
     }
 };
 

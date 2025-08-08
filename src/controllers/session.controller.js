@@ -1,4 +1,5 @@
 import Session from '../models/sessionModel.js';
+import { sendError } from '../utils/error.util.js';
 
 // @desc    Get all sessions for the authenticated user
 // @route   GET /api/sessions
@@ -14,17 +15,7 @@ export const getUserSessions = async (req, res) => {
 
         res.status(200).json(sessions);
     } catch (error) {
-        // Step 1: Always log the full, detailed error for our internal debugging.
         console.error('Get user sessions error:', error);
-
-        // --- NEW: Sanitize the response sent to the user ---
-        const isProduction = process.env.NODE_ENV === 'production';
-        const errorMessage = isProduction
-            ? "We're sorry, an unexpected error occurred. Please try again later."
-            : 'Failed to retrieve sessions. Please try again later.'; // Only show detailed messages in development
-
-        // Step 2: Send a generic, safe message in production.
-        res.status(500).json({ message: errorMessage });
-        // ---------------------------------------------
+        return sendError(res, error, { context: 'db' });
     }
 };
